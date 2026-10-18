@@ -1,0 +1,22 @@
+# ==========================================
+# 5G Dynamic QoS Project Dependencies
+# ==========================================
+
+# 1. Physical Layer Simulation (sim_sionna.py)
+# TensorFlow (The core tensor engine required for NVIDIA Sionna)
+tensorflow>=2.15.0
+# NVIDIA Sionna (5G/6G physical layer and channel modeling library)
+sionna>=0.16.2
+# For numerical computations (Comes with TF, but good practice to explicitly state)
+numpy>=1.24.0
+
+# 2. Bridge & Decision Engine (bridge_engine.py)
+# For sending HTTP POST requests to the 3GPP SBI (PCF)
+requests>=2.31.0
+# To parse and read the policies.yaml file
+PyYAML>=6.0.1
+
+# 3. Mock 5G Core Server (mock_pcf_server.py)
+# To spin up the Mock PCF REST API server
+Flask>=3.0.0
+werkzeug>=3.0.0

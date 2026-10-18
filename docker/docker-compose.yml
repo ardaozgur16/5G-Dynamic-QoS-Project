@@ -1,0 +1,58 @@
+# Dosya: docker/docker-compose.yml
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------
+  # 1. Mock PCF (5G Çekirdek Ağ Karar Verici Simülasyonu)
+  # ---------------------------------------------------------
+  mock-pcf:
+    image: python:3.9-slim
+    container_name: 5g_mock_pcf
+    working_dir: /app/core_mock
+    # Proje ana dizinini container içine /app olarak kopyala (canlı senkronizasyon)
+    volumes:
+      - ../:/app
+    # Flask kur ve mock server'ı başlat (mock_pcf_server.py dosyasını yazacağız)
+    command: sh -c "pip install --no-cache-dir flask && python mock_pcf_server.py"
+    ports:
+      - "8000:8000"
+    networks:
+      - 5g_network
+
+  # ---------------------------------------------------------
+  # 2. NVIDIA Sionna - Fiziksel Katman ve Yük Simülasyonu
+  # ---------------------------------------------------------
+  sim-sionna:
+    # Sionna, TensorFlow altyapısı gerektirdiği için resmi TF imajını kullanıyoruz
+    image: tensorflow/tensorflow:2.15.0
+    container_name: 5g_sim_sionna
+    working_dir: /app/sim
+    volumes:
+      - ../:/app
+    # Sionna'yı kur ve simülasyonu başlat
+    command: sh -c "pip install --no-cache-dir sionna && python sim_sionna.py"
+    networks:
+      - 5g_network
+
+  # ---------------------------------------------------------
+  # 3. Bridge Engine - QoS Karar ve Köprü Motoru
+  # ---------------------------------------------------------
+  bridge-engine:
+    image: python:3.9-slim
+    container_name: 5g_bridge_engine
+    working_dir: /app/bridge
+    volumes:
+      - ../:/app
+    # Bağımlılıkları kur ve köprü yazılımını başlat
+    command: sh -c "pip install --no-cache-dir requests pyyaml && python bridge_engine.py"
+    # Simülatör ve Core ayağa kalkmadan köprüyü başlatma
+    depends_on:
+      - mock-pcf
+      - sim-sionna
+    networks:
+      - 5g_network
+
+# Container'ların birbiriyle IP yerine isimleriyle (örn: mock-pcf) haberleşmesi için ortak ağ
+networks:
+  5g_network:
+    driver: bridge
