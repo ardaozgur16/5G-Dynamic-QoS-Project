@@ -44,29 +44,6 @@ The autonomous brain of the operation, designed to prevent core network overload
 * **3GPP TS 29.512 Compliance:** Simulates the `Npcf_SMPolicyControl` RESTful API endpoint.
 * Parses incoming JSON payloads (targeting specific SUPIs, applying 5QI rules, and adjusting MBR Uplink/Downlink) to emulate User Plane Function (UPF) rate-limiting.
 
-
-* # 4. Clone the repository
-git clone [https://github.com/ardaozgur16/5G-Dynamic-QoS-Project.git](https://github.com/ardaozgur16/5G-Dynamic-QoS-Project.git)
-cd 5G-Dynamic-QoS-Project
-
-# 2. Install required dependencies
-pip install -r requirements.txt
-
-# 3. Launch the topology using 3 separate terminal windows:
-
-# Terminal 1 (Start the Core Network PCF):
-cd core_mock && python mock_pcf_server.py
-
-# Terminal 2 (Start the PHY Simulator):
-cd sim && python sim_sionna.py
-
-# Terminal 3 (Start the QoS Bridge & Data Logger):
-cd bridge && python bridge_engine.py
-
-# 4. Generate the Benchmark Report (After running the system for ~2 mins):
-cd bridge && python benchmark_plotter.py
-
-
 ---
 
 ## 🔄 System Workflow
