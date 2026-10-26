@@ -1,4 +1,4 @@
-# Dosya: bridge_engine.py
+# Dosya: bridge/bridge_engine.py
 
 import os
 import time
@@ -13,10 +13,15 @@ except ImportError:
 
 
 class QoSBridgeEngine:
-    def __init__(self, load_file_path="current_load.json", policy_file_path="policies.yaml", state_file_path="active_policy.json"):
-        # Dosya yolu ../sim/current_load.json ise otomatik yakalar
-        if not os.path.exists(load_file_path) and os.path.exists("../sim/current_load.json"):
-            self.load_file_path = "../sim/current_load.json"
+    def __init__(self, load_file_path=None, policy_file_path="policies.yaml", state_file_path="active_policy.json"):
+        # Dosya yolu kontrolü: Sim klasörünü otomatik bulur
+        if load_file_path is None:
+            if os.path.exists("../sim/current_load.json"):
+                self.load_file_path = "../sim/current_load.json"
+            elif os.path.exists("current_load.json"):
+                self.load_file_path = "current_load.json"
+            else:
+                self.load_file_path = "../sim/current_load.json"
         else:
             self.load_file_path = load_file_path
 
@@ -30,7 +35,7 @@ class QoSBridgeEngine:
         # Politikaları yükle
         self.policies = self.load_policies()
 
-        # Simülatörün okuyabilmesi için başlangıç politikasını yaz
+        # Simülatörün okuyabilmesi için başlangıç durumunu yaz
         self._write_state(self.current_applied_policy)
 
     def load_policies(self):
@@ -53,13 +58,18 @@ class QoSBridgeEngine:
 
     def _write_state(self, policy_name):
         """Simülatörün geri besleme (closed-loop) alabilmesi için aktif durumu JSON'a yazar."""
-        try:
-            temp_path = self.state_file_path + ".tmp"
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump({"active_policy": policy_name}, f)
-            os.replace(temp_path, self.state_file_path)
-        except Exception:
-            pass
+        targets = [self.state_file_path]
+        if os.path.exists("../sim"):
+            targets.append("../sim/" + os.path.basename(self.state_file_path))
+
+        for target in targets:
+            try:
+                temp_path = target + ".tmp"
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump({"active_policy": policy_name}, f)
+                os.replace(temp_path, target)
+            except Exception:
+                pass
 
     def get_current_cell_load(self):
         """Sionna simülatörünün ürettiği yük verisini okur."""
@@ -92,7 +102,7 @@ class QoSBridgeEngine:
             if response.status_code in [200, 201]:
                 print(f"  [>] SBI İSTEĞİ BAŞARILI: {target_ue} -> {policy_name.upper()} ({qos_params['mbr_dl']})")
             else:
-                print(f"  [X] SBI İSTEĞİ BAŞARISIZ: Sunucu yanıt kodu {response.status_code}")
+                print(f"  [X] SBI İSTEĞİ BAŞARISIZ: Yanıt kodu {response.status_code}")
         except requests.exceptions.RequestException:
             print(f"  [!] PCF BAĞLANTI UYARISI: Sunucuya ulaşılamıyor ({self.pcf_api_url})")
 
@@ -107,9 +117,7 @@ class QoSBridgeEngine:
         low_thresh = self.policies.get("thresholds", {}).get("recovery_load_percent", 70.0)
         target_ues = self.policies.get("target_ues", [])
 
-        # Histerezis Karar Mekanizması:
-        # Sistem zaten 'throttled' durumundaysa ancak %70 altına inince 'normal'e döner.
-        # Sistem 'normal' durumdaysa ancak %80 üzerine çıkınca 'throttled'a geçer.
+        # Histerezis Karar Mekanizması
         if self.current_applied_policy == "throttled":
             if load_percent < low_thresh:
                 determined_policy = "normal"
@@ -121,7 +129,7 @@ class QoSBridgeEngine:
             else:
                 determined_policy = "normal"
 
-        # Durum değişikliği kontrolü (Gereksiz sinyalleşmeyi önler)
+        # Durum değişikliği kontrolü
         if determined_policy != self.current_applied_policy:
             print(f"\n[KÖPRÜ] >>> DURUM DEĞİŞİKLİĞİ: {self.current_applied_policy.upper()} -> {determined_policy.upper()} (Yük: %{load_percent}) <<<")
 
@@ -132,7 +140,7 @@ class QoSBridgeEngine:
             self.current_applied_policy = determined_policy
             self._write_state(determined_policy)
 
-        # Benchmark log kaydı (Her 5 saniyede bir noktayı kaydeder)
+        # Benchmark log kaydı
         try:
             with open("benchmark_log.csv", "a", encoding="utf-8") as log_file:
                 log_file.write(f"{time.time()},{load_percent},{self.current_applied_policy}\n")
@@ -140,7 +148,7 @@ class QoSBridgeEngine:
             pass
 
     def run(self):
-        print("[KÖPRÜ] QoS Karar Motoru (Kapalı Çevrim & Histerezis Destekli) Başlatıldı...")
+        print("[KÖPRÜ] QoS Karar Motoru (Histerezis & Kapalı Çevrim) Başlatıldı...")
         try:
             while True:
                 self.evaluate_and_enforce()
