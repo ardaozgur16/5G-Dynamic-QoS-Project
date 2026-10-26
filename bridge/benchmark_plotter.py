@@ -5,32 +5,48 @@ import os
 def generate_benchmark_report():
     file_path = "benchmark_log.csv"
     if not os.path.exists(file_path):
-        print("Önce sistemi çalıştırıp benchmark_log.csv dosyasının dolmasını bekleyin!")
+        print("[ERROR] 'benchmark_log.csv' not found. Run the testbed services first!")
         return
 
     # Verileri oku
     df = pd.read_csv(file_path, names=["Timestamp", "Load_Percent", "QoS_Policy"])
-    df["Timestamp"] = df["Timestamp"] - df["Timestamp"].iloc[0] # Süreyi sıfırdan başlat
     
-    # Grafik Ayarları
-    plt.figure(figsize=(12, 6))
-    plt.plot(df["Timestamp"], df["Load_Percent"], label="Anlık Hücre Doluluğu (%)", color='blue', linewidth=2)
-    plt.axhline(y=80, color='red', linestyle='--', label="Tıkanıklık Eşiği (%80)")
+    if df.empty:
+        print("[ERROR] 'benchmark_log.csv' is empty.")
+        return
 
-    # Throttled (Kısıtlanmış) olan bölgeleri grafikte kırmızı renkle vurgula
+    # Süreyi sıfırdan başlat ve dakika cinsine çevir (IEEE paper için daha temiz görünür)
+    df["Elapsed_Minutes"] = (df["Timestamp"] - df["Timestamp"].iloc[0]) / 60.0
+
+    # Grafik Ayarları (IEEE standartlarına uygun stil)
+    plt.figure(figsize=(10, 5), dpi=300)
+    plt.rcParams.update({'font.size': 11, 'font.family': 'sans-serif'})
+
+    # Hücre Yük Çizgisi
+    plt.plot(df["Elapsed_Minutes"], df["Load_Percent"], label="Cell PRB Utilization (%)", color='#1f77b4', linewidth=2)
+
+    # Histerezis Karar Eşikleri (%80 Tıkanıklık, %70 Toparlanma)
+    plt.axhline(y=80, color='#d62728', linestyle='--', linewidth=1.5, label="Congestion Threshold (80%)")
+    plt.axhline(y=70, color='#2ca02c', linestyle=':', linewidth=1.5, label="Recovery Threshold (70%)")
+
+    # Kısıtlanan Noktaları Vurgula (Throttled Samples)
     throttled_data = df[df["QoS_Policy"] == "throttled"]
-    plt.scatter(throttled_data["Timestamp"], throttled_data["Load_Percent"], color='red', s=50, zorder=5, label="QoS Kısıtlaması Aktif (2 Mbps)")
+    if not throttled_data.empty:
+        plt.scatter(throttled_data["Elapsed_Minutes"], throttled_data["Load_Percent"], 
+                    color='#d62728', s=35, alpha=0.8, zorder=5, label="Throttled State (2 Mbps MBR)")
 
-    plt.title("5G Core Dinamik QoS Performans ve Analiz (Benchmark) Raporu", fontsize=14)
-    plt.xlabel("Zaman (Saniye)", fontsize=12)
-    plt.ylabel("gNodeB PRB Doluluk Oranı (%)", fontsize=12)
-    plt.legend(loc="lower right")
-    plt.grid(True, linestyle=':', alpha=0.7)
+    plt.title("Closed-Loop Dynamic QoS Control Performance on IEEE 5G/6G Testbed", fontsize=12, pad=12)
+    plt.xlabel("Elapsed Time (Minutes)", fontsize=11)
+    plt.ylabel("PRB Utilization (%)", fontsize=11)
+    plt.ylim(0, 105)
     
-    # Raporu kaydet
-    plt.savefig("benchmark_report_graph.png", dpi=300)
-    print("✅ Benchmark Raporu oluşturuldu: 'benchmark_report_graph.png' dosyasını inceleyin.")
-    plt.show()
+    plt.legend(loc="lower right", frameon=True, facecolor='white', framealpha=0.9)
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+
+    output_img = "benchmark_report_graph.png"
+    plt.savefig(output_img, dpi=300)
+    print(f"[SUCCESS] IEEE benchmark report graph generated: '{output_img}'")
 
 if __name__ == "__main__":
     generate_benchmark_report()
