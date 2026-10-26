@@ -1,37 +1,23 @@
-# =================================================================
-# 5G Dinamik QoS ve Bant Genişliği Yönetimi - Politika Kuralları
-# =================================================================
-
-# 1. KARAR EŞİKLERİ (Thresholds)
-# Histerezis (Hysteresis) mekanizması ile sinyalleşme dalgalanması (flapping) önlenir.
 thresholds:
-  high_load_percent: 80.0       # Hücre doluluğu %80'e ulaşırsa 'throttled' profili uygulanır.
-  recovery_load_percent: 70.0   # Hücre doluluğu %70'in altına inerse 'normal' profile geri dönülür.
+  high_load_percent: 80.0       # %80 ve üzeri -> throttled
+  recovery_load_percent: 70.0   # %70 altı -> normal
 
-# 2. HEDEF ABONELER (Target UEs)
-# Hız kısıtlamasından etkilenecek düşük öncelikli cihazların SUPI/IMSI kimlikleri.
-# VIP kullanıcılar buraya eklenmeyerek hücre doluyken dahi hızları korunur.
 target_ues:
-  - "imsi-208930000000003"     # Standart akıllı telefon abonesi
-  - "imsi-208930000000004"     # Gecikmeye duyarlı olmayan IoT cihazı
-  - "imsi-208930000000005"     # Best-effort video streaming yapan cihaz
+  - "imsi-208930000000003"
+  - "imsi-208930000000004"
+  - "imsi-208930000000005"
 
-# 3. QoS PROFİLLERİ (Quality of Service Profiles)
-# 3GPP standartlarına uygun 5QI ve MBR (Maximum Bit Rate) profilleri.
 profiles:
-  # Hücre yükü güvenli seviyedeyken uygulanan standart profil
   normal:
-    5qi: 9                     # 5QI 9: Standart İnternet (Best Effort)
-    mbr_dl: "50 Mbps"          # Maksimum İndirme Hızı
-    mbr_ul: "20 Mbps"          # Maksimum Yükleme Hızı
+    5qi: 9
+    mbr_dl: "50 Mbps"
+    mbr_ul: "20 Mbps"
 
-  # Tıkanıklık anında hedef abonelere uygulanan kısıtlama profili
   throttled:
     5qi: 9
-    mbr_dl: "2 Mbps"           # Ağ rahatlayana kadar indirme hızı kısıtlanır
-    mbr_ul: "1 Mbps"           # Ağ rahatlayana kadar yükleme hızı kısıtlanır
+    mbr_dl: "2 Mbps"
+    mbr_ul: "1 Mbps"
 
-  # Aşırı kriz anları için tanımlı yedek profil
   critical_throttled:
     5qi: 9
     mbr_dl: "512 Kbps"
