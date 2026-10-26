@@ -2,12 +2,10 @@
 # Çalıştırmadan önce gereksinimleri yükleyin: pip install sionna tensorflow numpy
 
 import os
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Gereksiz TensorFlow uyarılarını gizler
 import tensorflow as tf
 import time
 import json
-import random
 
 try:
     import sionna
@@ -17,100 +15,109 @@ except ImportError:
 
 
 class SionnaCellLoadSimulator:
-    def __init__(self, total_prb=273, subcarrier_spacing=30e3):
+    def __init__(self, total_prb=273, subcarrier_spacing=30e3, state_file_path="active_policy.json"):
         """
-        5G NR Fiziksel Katman Parametreleri Başlatılır.
-        100 MHz bant genişliği ve 30 kHz SCS (Subcarrier Spacing) için:
-        Toplam PRB sayısı yaklaşık 273'tür.
-        1 PRB = 12 Alt Taşıyıcı (Subcarrier)
+        5G NR Fiziksel Katman Parametreleri (100 MHz, 30 kHz SCS, 273 PRB).
         """
         self.total_prb = tf.constant(total_prb, dtype=tf.float32)
-        # 1 PRB'nin frekans alanındaki genişliği (Hz)
         self.prb_bw = tf.constant(12 * subcarrier_spacing, dtype=tf.float32)
-
-        # Simülasyon sınırları
-        self.min_ues = 40
-        self.max_ues = 80
+        self.state_file_path = state_file_path
+        self.step_counter = 0
 
     def simulate_channel_snr(self, num_ues):
-        """
-        Kullanıcıların baz istasyonuna uzaklıklarına (Pathloss) ve
-        anlık kanal solmasına (Fading) göre rastgele SNR üretir.
-        """
-        # Kullanıcıların ortalama SNR değerleri (0 dB ile 25 dB arası uzaklığa bağlı)
-        mean_snr_db = tf.random.uniform(shape=[num_ues], minval=0.0, maxval=25.0, dtype=tf.float32)
-
-        # Hızlı Fading etkisi (Sionna benzeri kanal dalgalanması)
-        fading_db = tf.random.normal(shape=[num_ues], mean=0.0, stddev=4.0, dtype=tf.float32)
-
-        # Toplam SNR (dB) ve Lineer Dönüşüm
+        """Kullanıcıların SNR ve fading değerlerini hesaplar."""
+        mean_snr_db = tf.random.uniform(shape=[num_ues], minval=2.0, maxval=25.0, dtype=tf.float32)
+        fading_db = tf.random.normal(shape=[num_ues], mean=0.0, stddev=3.0, dtype=tf.float32)
         final_snr_db = mean_snr_db + fading_db
         snr_linear = tf.math.pow(10.0, final_snr_db / 10.0)
-
         return snr_linear
 
+    def get_applied_policy(self):
+        """Bridge engine tarafından yazılan güncel politikayı okur."""
+        if os.path.exists(self.state_file_path):
+            try:
+                with open(self.state_file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("active_policy", "normal")
+            except Exception:
+                return "normal"
+        return "normal"
+
     def compute_cell_load(self):
-        """
-        Tensör operasyonları ile ağ kapasitesi ve yükünü hesaplar.
-        """
-        # 1. O anki aktif abone sayısını belirle
-        current_ues = tf.random.uniform(shape=[], minval=self.min_ues, maxval=self.max_ues, dtype=tf.int32)
+        """Tensör operasyonları ile ağ yükünü hesaplar ve kapalı çevrim kısıtlamasını uygular."""
+        self.step_counter += 1
 
-        # 2. Kanal Kalitesini (SNR) simüle et
+        # Dinamik Trafik Deseni: Her 24 adımda bir (yaklaşık 2 dk) trafik pik yapsın
+        cycle_step = self.step_counter % 24
+        if 8 <= cycle_step <= 16:
+            # Pik Dönemi (Tıkanıklık tetikleyecek kullanıcı sayısı)
+            current_ues = tf.random.uniform(shape=[], minval=28, maxval=36, dtype=tf.int32)
+        else:
+            # Normal Dönem (Sistemi rahatlatacak kullanıcı sayısı)
+            current_ues = tf.random.uniform(shape=[], minval=14, maxval=22, dtype=tf.int32)
+
+        # SNR ve Spektral Verimlilik
         snr_linear = self.simulate_channel_snr(current_ues)
-
-        # 3. Spektral Verimlilik Hesaplaması (Shannon Kapasitesi: bps/Hz)
-        # C = log2(1 + SNR)
         spectral_efficiency = tf.math.log(1.0 + snr_linear) / tf.math.log(2.0)
-
-        # Pratik 5G MIMO/Ağ kayıpları için verimliliği ölçeklendir (Örn: %70 başarı)
         practical_efficiency = spectral_efficiency * 0.7
-
-        # 4. PRB Başına Kapasite (bps) = Spektral Verimlilik * PRB Bant Genişliği
         prb_capacity_bps = practical_efficiency * self.prb_bw
 
-        # 5. Abonelerin anlık trafik talepleri (Örn: 2 Mbps ile 12 Mbps arası)
-        demands_bps = tf.random.uniform(shape=[current_ues], minval=2e6, maxval=12e6, dtype=tf.float32)
+        # Normal şartlarda kullanıcı başına talep (1.5 Mbps - 6.0 Mbps)
+        demands_bps = tf.random.uniform(shape=[current_ues], minval=1.5e6, maxval=6.0e6, dtype=tf.float32)
 
-        # 6. Talep edilen PRB sayısını hesapla
+        # --- KAPALI ÇEVRİM GERİ BESLEME MEKANİZMASI ---
+        active_policy = self.get_applied_policy()
+        if active_policy == "throttled":
+            # Düşük öncelikli hedef abonelerin (yaklaşık %35) hızını 2 Mbps'ye sabitle
+            throttled_count = tf.cast(tf.cast(current_ues, tf.float32) * 0.35, tf.int32)
+            mask = tf.concat([
+                tf.ones([throttled_count], dtype=tf.float32),
+                tf.zeros([current_ues - throttled_count], dtype=tf.float32)
+            ], axis=0)
+
+            # Hedef kullanıcıların talebini 2 Mbps tavanı ile kırp
+            throttled_demands = tf.minimum(demands_bps, 2.0e6)
+            demands_bps = tf.where(mask > 0.0, throttled_demands, demands_bps)
+
+        # PRB İhtiyacı ve Yük Hesaplama
         required_prbs = demands_bps / prb_capacity_bps
         total_required_prbs = tf.math.reduce_sum(required_prbs)
 
-        # 7. Hücre Doluluk Oranını Hesapla (%)
         load_ratio = total_required_prbs / self.total_prb
-        load_percentage = tf.clip_by_value(load_ratio * 100.0, 0.0, 100.0)  # %100'ü geçemez
+        load_percentage = tf.clip_by_value(load_ratio * 100.0, 0.0, 100.0)
 
         return {
             "timestamp": time.time(),
             "active_ues": int(current_ues.numpy()),
-            "cell_load_percent": round(float(load_percentage.numpy()), 2)
+            "cell_load_percent": round(float(load_percentage.numpy()), 2),
+            "enforced_policy": active_policy
         }
 
 
 if __name__ == "__main__":
-    print(f"[SIONNA] 5G NR Fiziksel Katman Yük Simülasyonu Başlatılıyor...")
+    print("[SIONNA] Kapalı Çevrim Destekli 5G NR Yük Simülasyonu Başlatılıyor...")
     print(f"[SIONNA] TensorFlow Sürümü: {tf.__version__}")
 
-    sim = SionnaCellLoadSimulator()
+    sim = SionnaCellLoadSimulator(state_file_path="active_policy.json")
     output_file = "current_load.json"
 
     try:
         while True:
-            # Yükü hesapla
             metrics = sim.compute_cell_load()
 
-            # Konsola yazdır
             print(f"[Ağ Durumu] Aktif UE: {metrics['active_ues']:02d} | "
-                  f"Hücre Doluluğu: %{metrics['cell_load_percent']:05.2f}")
+                  f"Hücre Doluluğu: %{metrics['cell_load_percent']:05.2f} | "
+                  f"Aktif Politika: {metrics['enforced_policy'].upper()}")
 
-            # Bridge (Köprü) scriptinin okuyabilmesi için JSON'a kaydet
-            with open(output_file, "w") as f:
+            # Atomic JSON yazma (Yazma sırasında Bridge Engine'in yarım okumasını önler)
+            temp_file = output_file + ".tmp"
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(metrics, f)
+            os.replace(temp_file, output_file)
 
-            # Mimaride belirttiğiniz gibi 5 saniyede bir tetiklenir
             time.sleep(5)
 
     except KeyboardInterrupt:
-        print("\n[SIONNA] Simülasyon kullanıcı tarafından durduruldu.")
+        print("\n[SIONNA] Simülasyon durduruldu.")
         if os.path.exists(output_file):
             os.remove(output_file)
