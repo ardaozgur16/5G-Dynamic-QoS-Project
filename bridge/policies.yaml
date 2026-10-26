@@ -5,8 +5,8 @@
 # 1. KARAR EŞİKLERİ (Thresholds)
 # Histerezis (Hysteresis) mekanizması ile sinyalleşme dalgalanması (flapping) önlenir.
 thresholds:
-  high_load_percent: 80.0       # Hücre doluluğu %80'e ulaşırsa 'throttled' profili uygulanır.
-  recovery_load_percent: 70.0   # Hücre doluluğu %70'in altına inerse 'normal' profile geri dönülür.
+  high_load_percent: 55.0
+  recovery_load_percent: 35.0
 
 # 2. HEDEF ABONELER (Target UEs)
 # Hız kısıtlamasından etkilenecek düşük öncelikli cihazların SUPI/IMSI kimlikleri.
