@@ -3,35 +3,35 @@
 # =================================================================
 
 # 1. KARAR EŞİKLERİ (Thresholds)
-# Hücre doluluk oranı (%) hangi seviyeye gelince kısıtlama başlayacak?
+# Histerezis (Hysteresis) mekanizması ile sinyalleşme dalgalanması (flapping) önlenir.
 thresholds:
-  high_load_percent: 80.0      # Hücre doluluğu %80'e ulaşırsa 'throttled' profili uygulanır.
+  high_load_percent: 80.0       # Hücre doluluğu %80'e ulaşırsa 'throttled' profili uygulanır.
+  recovery_load_percent: 70.0   # Hücre doluluğu %70'in altına inerse 'normal' profile geri dönülür.
 
 # 2. HEDEF ABONELER (Target UEs)
 # Hız kısıtlamasından etkilenecek düşük öncelikli cihazların SUPI/IMSI kimlikleri.
-# Not: VIP kullanıcıları (örneğin IMSI-001) bu listeye yazmazsanız, hızları asla kesilmez!
+# VIP kullanıcılar buraya eklenmeyerek hücre doluyken dahi hızları korunur.
 target_ues:
-  - "imsi-208930000000003"     # Örn: Standart akıllı telefon abonesi
-  - "imsi-208930000000004"     # Örn: Gecikmeye duyarlı olmayan bir IoT cihazı
-  - "imsi-208930000000005"     # Örn: Best-effort video streaming yapan cihaz
+  - "imsi-208930000000003"     # Standart akıllı telefon abonesi
+  - "imsi-208930000000004"     # Gecikmeye duyarlı olmayan IoT cihazı
+  - "imsi-208930000000005"     # Best-effort video streaming yapan cihaz
 
 # 3. QoS PROFİLLERİ (Quality of Service Profiles)
-# Uygulanacak 5QI sınıfları ve MBR (Maximum Bit Rate) sınırlamaları.
+# 3GPP standartlarına uygun 5QI ve MBR (Maximum Bit Rate) profilleri.
 profiles:
-  
-  # Hücre yükü %80'in ALTINDA iken (Normal Durum)
+  # Hücre yükü güvenli seviyedeyken uygulanan standart profil
   normal:
     5qi: 9                     # 5QI 9: Standart İnternet (Best Effort)
     mbr_dl: "50 Mbps"          # Maksimum İndirme Hızı
     mbr_ul: "20 Mbps"          # Maksimum Yükleme Hızı
 
-  # Hücre yükü %80'in ÜZERİNDE iken (Tıkanıklık Durumu - Congestion)
+  # Tıkanıklık anında hedef abonelere uygulanan kısıtlama profili
   throttled:
     5qi: 9
-    mbr_dl: "2 Mbps"           # Ağ rahatlayana kadar indirme hızı sert şekilde kısıtlanır.
-    mbr_ul: "1 Mbps"           # Ağ rahatlayana kadar yükleme hızı kısıtlanır.
+    mbr_dl: "2 Mbps"           # Ağ rahatlayana kadar indirme hızı kısıtlanır
+    mbr_ul: "1 Mbps"           # Ağ rahatlayana kadar yükleme hızı kısıtlanır
 
-  # (Opsiyonel Ekstra Profil) İleride kodu geliştirip %95 üzeri için ekleyebilirsiniz
+  # Aşırı kriz anları için tanımlı yedek profil
   critical_throttled:
     5qi: 9
     mbr_dl: "512 Kbps"
